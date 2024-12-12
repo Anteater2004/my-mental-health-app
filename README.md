@@ -17,7 +17,7 @@ This is the backend codebase for a mental health app focusing on combating rumin
 ## How to Run Locally
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/mental_health_backend.git
+   git clone https://github.com/Anteater2004/my-mental-health-app.git
    python3 -m venv venv
    Activate the virtual environment:
       On macOS/Linux:
