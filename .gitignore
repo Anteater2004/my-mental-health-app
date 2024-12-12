@@ -1,0 +1,35 @@
+# Byte-compiled files
+*.pyc
+*.pyo
+__pycache__/
+
+# Virtual environment
+venv/
+
+# Environment variables
+.env
+
+# Database files
+db.sqlite3
+
+# Static files
+staticfiles/
+media/
+
+# IDE and editor files
+.idea/
+.vscode/
+
+# Logs and temporary files
+*.log
+*.pot
+*.pyc
+*.swp
+*~
+
+# Ignore migrations
+*/migrations/*.pyc
+*/migrations/*.py
+
+# Ignore compiled assets
+node_modules/
