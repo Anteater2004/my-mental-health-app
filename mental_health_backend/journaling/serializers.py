@@ -10,6 +10,8 @@ class JournalingSerializer(serializers.ModelSerializer):
 
 
 class MeditationSerializer(serializers.ModelSerializer):
+    audio_url = serializers.URLField(required=False, allow_blank=True, allow_null=True)
+
     class Meta:
         model = Meditation
         fields = '__all__'
@@ -18,6 +20,7 @@ class MeditationSerializer(serializers.ModelSerializer):
         if value <= 0:
             raise serializers.ValidationError("Duration must be positive.")
         return value
+
 
 
 class CognitiveExerciseSerializer(serializers.ModelSerializer):

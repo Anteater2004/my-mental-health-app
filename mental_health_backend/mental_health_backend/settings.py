@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
 from decouple import config
-from pathlib import Path
+from datetime import timedelta
+
 
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,6 +26,7 @@ INSTALLED_APPS = [
     'django_extensions',
     'rest_framework',
     'drf_yasg',
+    'django_rest_passwordreset',
     'rest_framework.authtoken',
     'corsheaders',     # For CORS handling
     'graphene_django', # For GraphQL integration
@@ -50,6 +52,8 @@ MIDDLEWARE = [
 CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins during development
 
 ROOT_URLCONF = 'mental_health_backend.urls'
+
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 TEMPLATES = [
     {
@@ -143,9 +147,9 @@ LOGGING = {
 }
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [],
+    'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework_simplejwt.authentication.JWTAuthentication',],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticated',
     ],
     'EXCEPTION_HANDLER': 'mental_health_backend.utils.custom_exception_handler',  # Update to correct project path
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
@@ -154,6 +158,11 @@ REST_FRAMEWORK = {
 
 AUTH_USER_MODEL = 'users.User'
 
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),  # Ensure timedelta is used correctly
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
 
 TEMPLATES = [
     {

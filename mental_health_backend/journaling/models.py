@@ -14,7 +14,7 @@ class Meditation(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField()
     duration = models.IntegerField()  # in minutes
-    audio_url = models.URLField()
+    audio_url = models.URLField(blank=True, null=True)  # Now optional
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
