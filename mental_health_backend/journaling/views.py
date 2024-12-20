@@ -1,3 +1,4 @@
+# journaling/views.py
 from rest_framework import generics, permissions
 from .models import Journaling, Meditation, CognitiveExercise, ProblemSolvingSession
 from .serializers import (
@@ -6,6 +7,7 @@ from .serializers import (
     CognitiveExerciseSerializer,
     ProblemSolvingSessionSerializer,
 )
+from django.shortcuts import get_object_or_404
 
 
 class JournalingListCreateView(generics.ListCreateAPIView):
@@ -28,27 +30,25 @@ class JournalingDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class MeditationListCreateView(generics.ListCreateAPIView):
-    permission_classes = [permissions.AllowAny]  # Public access
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     serializer_class = MeditationSerializer
     queryset = Meditation.objects.all()
 
-    # Removed perform_create method since Meditation doesn't have a user field
-
 
 class MeditationDetailView(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [permissions.AllowAny]  # Public access
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     serializer_class = MeditationSerializer
     queryset = Meditation.objects.all()
 
 
 class CognitiveExerciseListCreateView(generics.ListCreateAPIView):
-    permission_classes = [permissions.AllowAny]  # Public access
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     serializer_class = CognitiveExerciseSerializer
     queryset = CognitiveExercise.objects.all()
 
 
 class CognitiveExerciseDetailView(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [permissions.AllowAny]  # Public access
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     serializer_class = CognitiveExerciseSerializer
     queryset = CognitiveExercise.objects.all()
 
