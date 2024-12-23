@@ -27,6 +27,7 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit'; // Import Edit Icon
 import SearchIcon from '@mui/icons-material/Search';
 import PsychologyIcon from '@mui/icons-material/Psychology'; // Icon for cognitive exercises
 
@@ -93,12 +94,13 @@ function CognitiveExercises() {
   const [tabValue, setTabValue] = useState(0); // 0: Predefined CBT Tools, 1: Predefined Cognitive Exercises, 2: Create Your Own
   const [currentExercise, setCurrentExercise] = useState(null); // The exercise currently being used
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, id: null });
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, id: null, type: null, exerciseTitle: null });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
   // **Loading States**
   const [isLoadingUserExercises, setIsLoadingUserExercises] = useState(false);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false); // Loading state for all notes
 
   // **Debounced Search State**
   const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
@@ -109,6 +111,16 @@ function CognitiveExercises() {
     description: '',
     example: '',
   });
+
+  // **State for Notes**
+  const [notes, setNotes] = useState('');
+  const [isSubmittingNotes, setIsSubmittingNotes] = useState(false);
+  const [allExerciseNotes, setAllExerciseNotes] = useState({}); // All notes mapped by exercise
+
+  // **State for Editing Notes**
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [noteToEdit, setNoteToEdit] = useState(null); // The note object to edit
+  const [editedNote, setEditedNote] = useState('');
 
   // **useEffect for Debouncing Search Query**
   useEffect(() => {
@@ -159,10 +171,81 @@ function CognitiveExercises() {
     fetchUserCognitiveExercises();
   }, []);
 
+  // **Fetch All Journaling Entries on Mount**
+  useEffect(() => {
+    const fetchAllExerciseNotes = async () => {
+      setIsLoadingNotes(true);
+      setError('');
+      try {
+        const response = await axios.get('journaling/');
+        if (response.data) {
+          let journalingEntries = [];
+          if (Array.isArray(response.data)) {
+            // If the backend is not paginated
+            journalingEntries = response.data;
+          } else if (response.data.results && Array.isArray(response.data.results)) {
+            // If the backend is paginated
+            journalingEntries = response.data.results;
+          } else {
+            // Unexpected response structure
+            setError('Unexpected response format from server.');
+            return;
+          }
+
+          // **Parse Entries and Map Them to Exercises**
+          const notesMap = {};
+
+          journalingEntries.forEach((entry) => {
+            const entryText = entry.entry_text;
+            const exercisePrefix = 'Exercise: ';
+            if (entryText.startsWith(exercisePrefix)) {
+              const splitIndex = entryText.indexOf('\n\n');
+              if (splitIndex !== -1) {
+                const exerciseTitle = entryText.substring(
+                  exercisePrefix.length,
+                  splitIndex
+                ).trim();
+                const userNote = entryText.substring(splitIndex + 2).trim();
+
+                if (exerciseTitle in notesMap) {
+                  notesMap[exerciseTitle].push({
+                    id: entry.id,
+                    note: userNote,
+                    created_at: entry.created_at,
+                  });
+                } else {
+                  notesMap[exerciseTitle] = [
+                    {
+                      id: entry.id,
+                      note: userNote,
+                      created_at: entry.created_at,
+                    },
+                  ];
+                }
+              }
+            }
+          });
+
+          setAllExerciseNotes(notesMap);
+        } else {
+          setError('No data received from server.');
+        }
+      } catch (err) {
+        console.error('Failed to fetch journaling entries:', err);
+        setError('Failed to load notes. Please try again.');
+      } finally {
+        setIsLoadingNotes(false);
+      }
+    };
+
+    fetchAllExerciseNotes();
+  }, []);
+
   // **Handle Tab Change**
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
     setCurrentExercise(null);
+    setNotes('');
     setError('');
     setSuccess('');
     setSearchQuery('');
@@ -175,6 +258,7 @@ function CognitiveExercises() {
     setSuccess('');
     setIsSubmitting(true);
 
+    // **Validation: Ensure all fields are filled**
     if (!newExercise.title.trim() || !newExercise.description.trim() || !newExercise.example.trim()) {
       setError('All fields are required.');
       setIsSubmitting(false);
@@ -203,8 +287,9 @@ function CognitiveExercises() {
     } catch (err) {
       console.error('Failed to create custom exercise:', err);
       if (err.response && err.response.data) {
+        // **Aggregate and display all error messages**
         const errorMessages = Object.values(err.response.data).flat();
-        setError(errorMessages.length > 0 ? errorMessages[0] : 'Failed to create custom exercise.');
+        setError(errorMessages.length > 0 ? errorMessages.join(' ') : 'Failed to create custom exercise.');
       } else {
         setError('Failed to create custom exercise. Please try again.');
       }
@@ -216,35 +301,45 @@ function CognitiveExercises() {
   // **Handle Select Exercise (Predefined or User)**
   const handleSelectExercise = (exercise) => {
     setCurrentExercise(exercise);
+    setNotes(''); // Reset notes when selecting a new exercise
     setError('');
     setSuccess('');
   };
 
   // **Handle Delete Exercise**
   const handleDeleteExercise = (id) => {
-    setDeleteConfirm({ open: true, id });
+    setDeleteConfirm({ open: true, id, type: 'exercise', exerciseTitle: null });
   };
 
-  // **Confirm Deletion**
+  // **Confirm Deletion of Exercise**
   const confirmDeleteExercise = async () => {
     const { id } = deleteConfirm;
-    setDeleteConfirm({ open: false, id: null });
+    setDeleteConfirm({ open: false, id: null, type: null, exerciseTitle: null });
     setError('');
     setSuccess('');
 
     try {
       await axios.delete(`journaling/cognitive_exercises/${id}/`);
       setUserCognitiveExercises(userCognitiveExercises.filter((ex) => ex.id !== id));
+
+      // Optionally, remove related notes if any (requires backend support)
+      // For now, notes remain as is.
+
       setSuccess('Exercise deleted successfully!');
     } catch (err) {
       console.error('Failed to delete exercise:', err);
-      setError('Failed to delete exercise. Please try again.');
+      if (err.response && err.response.data) {
+        const errorMessages = Object.values(err.response.data).flat();
+        setError(errorMessages.length > 0 ? errorMessages.join(' ') : 'Failed to delete exercise.');
+      } else {
+        setError('Failed to delete exercise. Please try again.');
+      }
     }
   };
 
   // **Cancel Deletion**
   const cancelDeleteExercise = () => {
-    setDeleteConfirm({ open: false, id: null });
+    setDeleteConfirm({ open: false, id: null, type: null, exerciseTitle: null });
   };
 
   // **Filter Exercises based on Debounced Search Query**
@@ -262,6 +357,194 @@ function CognitiveExercises() {
         exampleText.includes(search)
       );
     });
+  };
+
+  // **Handle Submit Notes**
+  const handleSubmitNotes = async () => {
+    if (!notes.trim()) {
+      setError('Please enter your thoughts before submitting.');
+      return;
+    }
+
+    setIsSubmittingNotes(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      // **Create a new Journaling entry with the notes**
+      const response = await axios.post('journaling/', {
+        entry_text: `Exercise: ${currentExercise.title}\n\n${notes.trim()}`,
+      });
+
+      // **Parse the new entry to extract note**
+      const newEntryText = response.data.entry_text;
+      const exercisePrefix = 'Exercise: ';
+      const splitIndex = newEntryText.indexOf('\n\n');
+      let exerciseTitle = '';
+      let userNote = '';
+
+      if (newEntryText.startsWith(exercisePrefix) && splitIndex !== -1) {
+        exerciseTitle = newEntryText.substring(
+          exercisePrefix.length,
+          splitIndex
+        ).trim();
+        userNote = newEntryText.substring(splitIndex + 2).trim();
+      }
+
+      // **Update allExerciseNotes state**
+      if (exerciseTitle && userNote) {
+        setAllExerciseNotes((prevNotes) => {
+          const updatedNotes = { ...prevNotes };
+          if (exerciseTitle in updatedNotes) {
+            updatedNotes[exerciseTitle].unshift({
+              id: response.data.id,
+              note: userNote,
+              created_at: response.data.created_at,
+            });
+          } else {
+            updatedNotes[exerciseTitle] = [
+              {
+                id: response.data.id,
+                note: userNote,
+                created_at: response.data.created_at,
+              },
+            ];
+          }
+          return updatedNotes;
+        });
+      }
+
+      setSuccess('Your notes have been saved successfully!');
+      setNotes('');
+    } catch (err) {
+      console.error('Failed to save notes:', err);
+      if (err.response && err.response.data) {
+        // **Aggregate and display all error messages**
+        const errorMessages = Object.values(err.response.data).flat();
+        setError(errorMessages.length > 0 ? errorMessages.join(' ') : 'Failed to save notes.');
+      } else {
+        setError('Failed to save notes. Please try again.');
+      }
+    } finally {
+      setIsSubmittingNotes(false);
+    }
+  };
+
+  // **Handle Delete Note**
+  const handleDeleteNote = (id, exerciseTitle) => {
+    setDeleteConfirm({ open: true, id, type: 'note', exerciseTitle });
+  };
+
+  // **Confirm Deletion of Note**
+  const confirmDeleteNote = async () => {
+    const { id, exerciseTitle } = deleteConfirm;
+    setDeleteConfirm({ open: false, id: null, type: null, exerciseTitle: null });
+    setError('');
+    setSuccess('');
+
+    try {
+      await axios.delete(`journaling/${id}/`);
+      setAllExerciseNotes((prevNotes) => {
+        const updatedNotes = { ...prevNotes };
+        if (exerciseTitle in updatedNotes) {
+          updatedNotes[exerciseTitle] = updatedNotes[exerciseTitle].filter((note) => note.id !== id);
+          // If no notes remain under the exercise, remove the key
+          if (updatedNotes[exerciseTitle].length === 0) {
+            delete updatedNotes[exerciseTitle];
+          }
+        }
+        return updatedNotes;
+      });
+
+      setSuccess('Note deleted successfully!');
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+      if (err.response && err.response.data) {
+        const errorMessages = Object.values(err.response.data).flat();
+        setError(errorMessages.length > 0 ? errorMessages.join(' ') : 'Failed to delete note.');
+      } else {
+        setError('Failed to delete note. Please try again.');
+      }
+    }
+  };
+
+  // **Handle Open Edit Dialog**
+  const handleOpenEditDialog = (note) => {
+    setNoteToEdit(note);
+    setEditedNote(note.note);
+    setEditDialogOpen(true);
+    setError('');
+    setSuccess('');
+  };
+
+  // **Handle Close Edit Dialog**
+  const handleCloseEditDialog = () => {
+    setEditDialogOpen(false);
+    setNoteToEdit(null);
+    setEditedNote('');
+  };
+
+  // **Handle Save Edited Note**
+  const handleSaveEditedNote = async () => {
+    if (!editedNote.trim()) {
+      setError('Note cannot be empty.');
+      return;
+    }
+
+    setIsSubmittingNotes(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      // **Fetch the original journaling entry to preserve the exercise title**
+      const originalEntryResponse = await axios.get(`journaling/${noteToEdit.id}/`);
+      const originalEntryText = originalEntryResponse.data.entry_text;
+
+      const exercisePrefix = 'Exercise: ';
+      const splitIndex = originalEntryText.indexOf('\n\n');
+      let exerciseTitle = '';
+
+      if (originalEntryText.startsWith(exercisePrefix) && splitIndex !== -1) {
+        exerciseTitle = originalEntryText.substring(
+          exercisePrefix.length,
+          splitIndex
+        ).trim();
+      }
+
+      // **Compose the updated entry_text**
+      const updatedEntryText = `Exercise: ${exerciseTitle}\n\n${editedNote.trim()}`;
+
+      // **Send PATCH request to update the entry**
+      const updatedEntryResponse = await axios.patch(`journaling/${noteToEdit.id}/`, {
+        entry_text: updatedEntryText,
+      });
+
+      // **Update allExerciseNotes state**
+      setAllExerciseNotes((prevNotes) => {
+        const updatedNotes = { ...prevNotes };
+        if (exerciseTitle in updatedNotes) {
+          updatedNotes[exerciseTitle] = updatedNotes[exerciseTitle].map((note) =>
+            note.id === noteToEdit.id
+              ? { ...note, note: editedNote.trim(), created_at: updatedEntryResponse.data.created_at }
+              : note
+          );
+        }
+        return updatedNotes;
+      });
+
+      setSuccess('Note updated successfully!');
+      handleCloseEditDialog();
+    } catch (err) {
+      console.error('Failed to update note:', err);
+      if (err.response && err.response.data) {
+        const errorMessages = Object.values(err.response.data).flat();
+        setError(errorMessages.length > 0 ? errorMessages.join(' ') : 'Failed to update note.');
+      } else {
+        setError('Failed to update note. Please try again.');
+      }
+    } finally {
+      setIsSubmittingNotes(false);
+    }
   };
 
   return (
@@ -363,6 +646,7 @@ function CognitiveExercises() {
                     </Button>
                     <Tooltip title="Delete Exercise">
                       <span>
+                        {/* **Delete Disabled for Predefined Exercises** */}
                         <IconButton
                           aria-label="delete"
                           disabled
@@ -414,6 +698,7 @@ function CognitiveExercises() {
                     </Button>
                     <Tooltip title="Delete Exercise">
                       <span>
+                        {/* **Delete Disabled for Predefined Exercises** */}
                         <IconButton
                           aria-label="delete"
                           disabled
@@ -533,6 +818,60 @@ function CognitiveExercises() {
           </Box>
         )}
 
+        {/* **Your Notes Section** */}
+        <Box sx={{ mt: 6 }}>
+          <Typography variant="h5" sx={{ mb: 3 }}>
+            Your Notes
+          </Typography>
+          {isLoadingNotes ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+              <CircularProgress aria-label="Loading Your Notes" />
+            </Box>
+          ) : Object.keys(allExerciseNotes).length === 0 ? (
+            <Typography>No notes found. Start using exercises to add notes!</Typography>
+          ) : (
+            Object.entries(allExerciseNotes).map(([exerciseTitle, notesArray]) => (
+              <Box key={exerciseTitle} sx={{ mb: 4 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  {exerciseTitle}
+                </Typography>
+                {notesArray.map((note) => (
+                  <Paper key={note.id} sx={{ p: 2, mb: 2 }} elevation={2}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                        {note.note}
+                      </Typography>
+                      <Box>
+                        <Tooltip title="Edit Note">
+                          <IconButton
+                            aria-label="edit"
+                            onClick={() => handleOpenEditDialog(note)}
+                            color="primary"
+                          >
+                            <EditIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Note">
+                          <IconButton
+                            aria-label="delete"
+                            onClick={() => handleDeleteNote(note.id, exerciseTitle)}
+                            color="error"
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
+                      {new Date(note.created_at).toLocaleString()}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Box>
+            ))
+          )}
+        </Box>
+
         {/* **Exercise Details Section** */}
         {currentExercise && (
           <Box sx={{ mt: 4 }}>
@@ -548,10 +887,38 @@ function CognitiveExercises() {
                 <br />
                 {currentExercise.example}
               </Typography>
+
+              {/* **Notes Section** */}
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Your Thoughts and Notes
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="Add your notes here..."
+                  multiline
+                  rows={4}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  sx={{ mb: 2 }}
+                  aria-label="Add your notes here"
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleSubmitNotes}
+                  disabled={isSubmittingNotes}
+                  aria-label="Save Notes"
+                >
+                  {isSubmittingNotes ? 'Saving...' : 'Save Notes'}
+                </Button>
+              </Box>
+
               <Button
                 variant="outlined"
                 color="secondary"
                 onClick={() => setCurrentExercise(null)}
+                sx={{ mt: 3 }}
                 aria-label="Close Exercise Details"
               >
                 Close
@@ -560,13 +927,73 @@ function CognitiveExercises() {
           </Box>
         )}
 
-        {/* **Delete Confirmation Dialog** */}
+        {/* **Edit Note Dialog** */}
         <Dialog
-          open={deleteConfirm.open}
-          onClose={cancelDeleteExercise}
-          aria-labelledby="delete-confirmation-dialog"
+          open={editDialogOpen}
+          onClose={handleCloseEditDialog}
+          aria-labelledby="edit-note-dialog-title"
         >
-          <DialogTitle id="delete-confirmation-dialog">Confirm Deletion</DialogTitle>
+          <DialogTitle id="edit-note-dialog-title">Edit Note</DialogTitle>
+          <DialogContent>
+            <TextField
+              fullWidth
+              label="Edit your note"
+              multiline
+              rows={4}
+              value={editedNote}
+              onChange={(e) => setEditedNote(e.target.value)}
+              sx={{ mt: 1 }}
+              aria-label="Edit your note"
+            />
+          </DialogContent>
+          <MuiDialogActions>
+            <Button onClick={handleCloseEditDialog} color="secondary" aria-label="Cancel Edit">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveEditedNote}
+              color="primary"
+              variant="contained"
+              disabled={isSubmittingNotes}
+              aria-label="Save Edited Note"
+            >
+              {isSubmittingNotes ? 'Saving...' : 'Save'}
+            </Button>
+          </MuiDialogActions>
+        </Dialog>
+
+        {/* **Delete Confirmation Dialog for Notes** */}
+        <Dialog
+          open={deleteConfirm.open && deleteConfirm.type === 'note'}
+          onClose={cancelDeleteExercise}
+          aria-labelledby="delete-note-confirmation-dialog"
+        >
+          <DialogTitle id="delete-note-confirmation-dialog">Confirm Deletion</DialogTitle>
+          <DialogContent>
+            <Typography>Are you sure you want to delete this note?</Typography>
+          </DialogContent>
+          <MuiDialogActions>
+            <Button onClick={cancelDeleteExercise} color="secondary" aria-label="Cancel Deletion">
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmDeleteNote}
+              color="error"
+              variant="contained"
+              aria-label="Confirm Deletion"
+            >
+              Delete
+            </Button>
+          </MuiDialogActions>
+        </Dialog>
+
+        {/* **Delete Confirmation Dialog for Exercises** */}
+        <Dialog
+          open={deleteConfirm.open && deleteConfirm.type === 'exercise'}
+          onClose={cancelDeleteExercise}
+          aria-labelledby="delete-exercise-confirmation-dialog"
+        >
+          <DialogTitle id="delete-exercise-confirmation-dialog">Confirm Deletion</DialogTitle>
           <DialogContent>
             <Typography>Are you sure you want to delete this exercise?</Typography>
           </DialogContent>

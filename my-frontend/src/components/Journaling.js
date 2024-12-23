@@ -1,4 +1,5 @@
 // src/components/Journaling.js
+
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from '../axiosConfig'; // Ensure this path matches your Axios config file
 import { useNavigate } from 'react-router-dom';
@@ -13,35 +14,27 @@ import {
   Avatar,
   IconButton,
   CircularProgress,
-  Card,
-  CardContent,
-  CardActions,
   InputAdornment,
-  Stepper,
-  Step,
-  StepLabel,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Tooltip,
-  LinearProgress,
+  Pagination,
+  Grid,
+  Stack,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import DeleteIcon from '@mui/icons-material/Delete';
-import BookIcon from '@mui/icons-material/Book';
 import SearchIcon from '@mui/icons-material/Search';
 import InfoIcon from '@mui/icons-material/Info';
+import BookIcon from '@mui/icons-material/Book';
+import JournalCard from './JournalCard'; // Import the JournalCard component
 
 function Journaling() {
   const [entries, setEntries] = useState([]);
   const [displayedEntries, setDisplayedEntries] = useState([]); // Filtered set
   const [newEntry, setNewEntry] = useState({
     entry_text: '',
-    cognitive_distortion: '',
-    reframed_text: '',
-    self_compassion: '',
-    concrete_steps: '',
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(''); // Added success state
@@ -49,16 +42,19 @@ function Journaling() {
   const [nextUrl, setNextUrl] = useState(null); // For pagination
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
-  const [activeStep, setActiveStep] = useState(0); // For reflection steps
-  const [openDialog, setOpenDialog] = useState(false); // For reflection after entry
+  const [openDialog, setOpenDialog] = useState(false); // For confirmation after entry
 
-  const steps = [
-    'Identify Your Negative Thought',
-    'Recognize Cognitive Distortions',
-    'Reframe Your Thought',
-    'Practice Self-Compassion',
-    'Define Concrete Action Steps',
-  ];
+  // State variables for editing
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [currentEditEntry, setCurrentEditEntry] = useState(null);
+  const [updatedEntryText, setUpdatedEntryText] = useState('');
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const entriesPerPage = 10;
+
+  // Grouping state (e.g., by month/year)
+  const [groupedEntries, setGroupedEntries] = useState({});
 
   // Memoize fetchEntries to prevent unnecessary re-creations
   const fetchEntries = useCallback(async (url) => {
@@ -68,7 +64,7 @@ function Journaling() {
     try {
       const response = await axios.get(url, {
         headers: {
-          Authorization: undefined, // Remove Authorization header for public endpoints
+          Authorization: undefined, // Remove Authorization header if not needed
         },
       });
       console.log('Fetch Entries Response:', response.data);
@@ -109,13 +105,9 @@ function Journaling() {
     // Filter entries based on search query
     if (searchQuery.trim()) {
       const filtered = entries.filter((entry) => {
-        // Search within all fields for comprehensive filtering
+        // Search within entry_text for comprehensive filtering
         return (
-          entry.entry_text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          entry.cognitive_distortion.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          entry.reframed_text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          entry.self_compassion.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          entry.concrete_steps.toLowerCase().includes(searchQuery.toLowerCase())
+          entry.entry_text.toLowerCase().includes(searchQuery.toLowerCase())
         );
       });
       setDisplayedEntries(filtered);
@@ -123,6 +115,34 @@ function Journaling() {
       setDisplayedEntries(entries);
     }
   }, [entries, searchQuery]);
+
+  useEffect(() => {
+    // Group entries by month and year
+    const groups = entries.reduce((acc, entry) => {
+      const date = new Date(entry.created_at);
+      const monthYear = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+      if (!acc[monthYear]) {
+        acc[monthYear] = [];
+      }
+      acc[monthYear].push(entry);
+      return acc;
+    }, {});
+    setGroupedEntries(groups);
+  }, [entries]);
+
+  // Calculate total pages for pagination
+  const totalPages = Math.ceil(displayedEntries.length / entriesPerPage);
+
+  // Get current page entries
+  const indexOfLastEntry = currentPage * entriesPerPage;
+  const indexOfFirstEntry = indexOfLastEntry - entriesPerPage;
+  const currentEntries = displayedEntries.slice(indexOfFirstEntry, indexOfLastEntry);
+
+  // Handle page change
+  const handlePageChange = (event, value) => {
+    setCurrentPage(value);
+    window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll to top on page change
+  };
 
   // Handle creation of a new journal entry
   const handleCreateEntry = async (e) => {
@@ -133,33 +153,18 @@ function Journaling() {
     // Debugging log
     console.log('handleCreateEntry called');
 
-    // Validate all fields
-    if (
-      newEntry.entry_text.trim() === '' ||
-      newEntry.cognitive_distortion.trim() === '' ||
-      newEntry.reframed_text.trim() === '' ||
-      newEntry.self_compassion.trim() === '' ||
-      newEntry.concrete_steps.trim() === ''
-    ) {
-      setError('All fields are required.');
+    // Validate main notes field
+    if (newEntry.entry_text.trim() === '') {
+      setError('Entry text cannot be empty.');
       return;
     }
 
-    // Assemble structured data into a single concatenated string
-    const assembledEntryText = `
-Negative Thought: ${newEntry.entry_text}
-Cognitive Distortion: ${newEntry.cognitive_distortion}
-Reframed Thought: ${newEntry.reframed_text}
-Self-Compassion: ${newEntry.self_compassion}
-Concrete Steps: ${newEntry.concrete_steps}
-    `.trim();
-
     try {
       const response = await axios.post('journaling/', {
-        entry_text: assembledEntryText,
+        entry_text: newEntry.entry_text.trim(),
       }, {
         headers: {
-          Authorization: undefined, // Remove Authorization header for public endpoints
+          Authorization: undefined, // Remove Authorization header if not needed
         },
       });
       console.log('Create Entry Response:', response.data);
@@ -168,14 +173,9 @@ Concrete Steps: ${newEntry.concrete_steps}
         setEntries([response.data, ...entries]);
         setNewEntry({
           entry_text: '',
-          cognitive_distortion: '',
-          reframed_text: '',
-          self_compassion: '',
-          concrete_steps: '',
         });
-        setActiveStep(0); // Reset stepper after submission
         setSuccess('Journaling entry submitted successfully!');
-        handleOpenDialog(); // Open the reflection dialog
+        handleOpenDialog(); // Open the confirmation dialog
       } else {
         console.error('Unexpected response format after creating entry:', response.data);
         setError('Unexpected response format after creating entry.');
@@ -203,7 +203,7 @@ Concrete Steps: ${newEntry.concrete_steps}
     try {
       await axios.delete(`journaling/${id}/`, {
         headers: {
-          Authorization: undefined, // Remove Authorization header for public endpoints
+          Authorization: undefined, // Remove Authorization header if not needed
         },
       });
       setEntries(entries.filter(entry => entry.id !== id));
@@ -211,6 +211,64 @@ Concrete Steps: ${newEntry.concrete_steps}
     } catch (error) {
       console.error('Failed to delete journaling entry:', error);
       setError('Failed to delete entry. Please try again.');
+    }
+  };
+
+  // Functions to handle editing
+  const handleOpenEditDialog = (entry) => {
+    setCurrentEditEntry(entry);
+    setUpdatedEntryText(entry.entry_text);
+    setEditDialogOpen(true);
+  };
+
+  const handleCloseEditDialog = () => {
+    setEditDialogOpen(false);
+    setCurrentEditEntry(null);
+    setUpdatedEntryText('');
+  };
+
+  const handleUpdateEntry = async () => {
+    if (updatedEntryText.trim() === '') {
+      setError('Entry text cannot be empty.');
+      return;
+    }
+
+    try {
+      const response = await axios.put(`journaling/${currentEditEntry.id}/`, {
+        entry_text: updatedEntryText.trim(),
+      }, {
+        headers: {
+          Authorization: undefined, // Remove Authorization header if not needed
+        },
+      });
+
+      console.log('Update Entry Response:', response.data);
+
+      if (response.data && response.data.id) {
+        // Update the entry in the local state
+        setEntries((prevEntries) =>
+          prevEntries.map((entry) =>
+            entry.id === response.data.id ? response.data : entry
+          )
+        );
+        setSuccess('Journaling entry updated successfully!');
+        handleCloseEditDialog();
+      } else {
+        console.error('Unexpected response format after updating entry:', response.data);
+        setError('Unexpected response format after updating entry.');
+      }
+    } catch (error) {
+      console.error('Failed to update journaling entry:', error);
+      // Check if the error response provides more details
+      if (error.response && error.response.data) {
+        // Format error messages for better readability
+        const errorMessages = Object.entries(error.response.data)
+          .map(([field, messages]) => `${field}: ${messages.join(', ')}`)
+          .join(' | ');
+        setError(`Failed to update entry: ${errorMessages}`);
+      } else {
+        setError('Failed to update entry. Please try again.');
+      }
     }
   };
 
@@ -224,23 +282,13 @@ Concrete Steps: ${newEntry.concrete_steps}
     }
   };
 
-  const handleNextStep = () => {
-    console.log('handleNextStep called');
-    setActiveStep((prev) => prev + 1);
-    // Ensure no automatic submission is triggered here
-  };
-
   const handleCloseDialog = () => {
     setOpenDialog(false);
-    setActiveStep(0);
   };
 
   const handleOpenDialog = () => {
     setOpenDialog(true);
   };
-
-  // Calculate progress percentage based on activeStep
-  const progressPercentage = Math.min(((activeStep + 1) / steps.length) * 100, 100);
 
   if (loading && entries.length === 0) {
     return (
@@ -249,16 +297,17 @@ Concrete Steps: ${newEntry.concrete_steps}
           minHeight: '100vh',
           background: 'linear-gradient(to right, #f0f5f9, #ffffff)',
           display: 'flex',
-          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           p: 2
         }}
       >
-        <CircularProgress />
-        <Typography variant="body1" sx={{ mt: 2, color: 'text.secondary' }}>
-          Loading your journal entries...
-        </Typography>
+        <Stack alignItems="center" spacing={2}>
+          <CircularProgress aria-label="Loading spinner" />
+          <Typography variant="body1" sx={{ color: 'text.secondary' }}>
+            Loading your journal entries...
+          </Typography>
+        </Stack>
       </Box>
     );
   }
@@ -270,274 +319,215 @@ Concrete Steps: ${newEntry.concrete_steps}
       sx={{
         minHeight: '100vh',
         background: 'linear-gradient(to right, #f0f5f9, #ffffff)',
-        py: 4,
+        py: { xs: 2, sm: 4 },
       }}
     >
-      <Container maxWidth="md" sx={{ position: 'relative' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <Button
-            variant="text"
-            startIcon={<ArrowBackIcon />}
-            onClick={handleBack}
-            sx={{ mr: 2, color: 'primary.main' }}
-          >
-            Back to Home
-          </Button>
-          <Typography
-            variant="h5"
-            component="h1"
-            sx={{ flexGrow: 1, textAlign: 'center', color: 'primary.dark' }}
-          >
-            My Journal Entries
-          </Typography>
-          <Tooltip title="Track your progress and understand your patterns">
-            <IconButton>
-              <InfoIcon color="action" />
-            </IconButton>
-          </Tooltip>
-        </Box>
-
-        {/* Progress Bar */}
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Progress: {activeStep + 1} / {steps.length} completed
-          </Typography>
-          <LinearProgress variant="determinate" value={progressPercentage} />
-        </Box>
-
-        <Paper elevation={3} sx={{ p: 4, borderRadius: 2, backgroundColor: '#fafafa' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-            <Avatar sx={{ bgcolor: 'secondary.main', width: 64, height: 64 }}>
-              <BookIcon fontSize="large" />
-            </Avatar>
-          </Box>
-          <Typography variant="h6" align="center" gutterBottom sx={{ color: 'text.primary' }}>
-            Reflect, Grow, and Let Go
-          </Typography>
-          <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 3 }}>
-            Journaling helps identify patterns, release negativity, and focus on what matters.
-            Keep writing and watch yourself progress toward greater clarity and resilience.
-          </Typography>
-
-          {/* Display Success Message */}
-          {success && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              {success}
-            </Alert>
-          )}
-
-          {/* Display Error Message */}
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-
-          {/* New entry form with structured prompts */}
-          <Paper elevation={1} sx={{ p: 3, borderRadius: 2, mb: 3, backgroundColor: '#ffffff' }}>
-            <Typography variant="subtitle1" gutterBottom>
-              Add a New Entry
+      <Container maxWidth="md">
+        {/* Header Section */}
+        <Grid container alignItems="center" spacing={2} sx={{ mb: 3 }}>
+          <Grid item>
+            <Button
+              variant="text"
+              startIcon={<ArrowBackIcon />}
+              onClick={handleBack}
+              sx={{ color: 'primary.main' }}
+              aria-label="Navigate back to home page"
+            >
+              Back to Home
+            </Button>
+          </Grid>
+          <Grid item xs>
+            <Typography
+              variant="h4"
+              component="h1"
+              sx={{
+                textAlign: { xs: 'center', sm: 'left' },
+                color: 'primary.dark',
+                marginLeft: { sm: 2 }, // Added marginLeft for spacing on small screens and above
+              }}
+            >
+              My Journal Entries
             </Typography>
-            <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 2 }}>
-              {steps.map((label) => (
-                <Step key={label}>
-                  <StepLabel>{label}</StepLabel>
-                </Step>
-              ))}
-            </Stepper>
-            <Box component="form" onSubmit={handleCreateEntry} sx={{ display: 'flex', flexDirection: 'column' }}>
-              {activeStep === 0 && (
-                <TextField
-                  multiline
-                  rows={2}
-                  fullWidth
-                  variant="outlined"
-                  label="Identify Your Negative Thought"
-                  placeholder="What negative thought are you experiencing?"
-                  value={newEntry.entry_text}
-                  onChange={(e) => setNewEntry({ ...newEntry, entry_text: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              )}
-              {activeStep === 1 && (
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  label="Cognitive Distortions"
-                  placeholder="Identify any cognitive distortions (e.g., all-or-nothing thinking, overgeneralization)"
-                  value={newEntry.cognitive_distortion}
-                  onChange={(e) => setNewEntry({ ...newEntry, cognitive_distortion: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              )}
-              {activeStep === 2 && (
-                <TextField
-                  multiline
-                  rows={3}
-                  fullWidth
-                  variant="outlined"
-                  label="Reframe Your Thought"
-                  placeholder="How can you reframe this thought in a more balanced way?"
-                  value={newEntry.reframed_text}
-                  onChange={(e) => setNewEntry({ ...newEntry, reframed_text: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              )}
-              {activeStep === 3 && (
-                <TextField
-                  multiline
-                  rows={2}
-                  fullWidth
-                  variant="outlined"
-                  label="Self-Compassion"
-                  placeholder="Write a compassionate statement to yourself regarding this thought."
-                  value={newEntry.self_compassion}
-                  onChange={(e) => setNewEntry({ ...newEntry, self_compassion: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              )}
-              {activeStep === 4 && (
-                <TextField
-                  multiline
-                  rows={3}
-                  fullWidth
-                  variant="outlined"
-                  label="Concrete Action Steps"
-                  placeholder="What actionable steps can you take to address or move past this thought?"
-                  value={newEntry.concrete_steps}
-                  onChange={(e) => setNewEntry({ ...newEntry, concrete_steps: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              )}
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-                <Button
-                  disabled={activeStep === 0}
-                  onClick={() => setActiveStep((prev) => prev - 1)}
-                  variant="outlined"
-                  color="primary"
-                  type="button" // Ensure type is 'button' to prevent form submission
-                >
-                  Back
-                </Button>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  type={activeStep === steps.length - 1 ? 'submit' : 'button'}
-                  onClick={activeStep === steps.length - 1 ? null : handleNextStep}
-                >
-                  {activeStep === steps.length - 1 ? 'Submit Entry' : 'Next'}
-                </Button>
-              </Box>
-            </Box>
-          </Paper>
+          </Grid>
+          <Grid item sx={{ display: { xs: 'none', sm: 'block' } }}>
+            <Tooltip title="Track your progress and understand your patterns">
+              <IconButton aria-label="Information about journaling progress">
+                <InfoIcon color="action" />
+              </IconButton>
+            </Tooltip>
+          </Grid>
+        </Grid>
 
-          {/* Reflection Dialog */}
-          <Dialog open={openDialog} onClose={handleCloseDialog}>
-            <DialogTitle>Great Job!</DialogTitle>
-            <DialogContent>
-              <Typography variant="body1">
-                You've completed all the steps for your journal entry. Remember to revisit your entries to track your progress and patterns.
-              </Typography>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={handleCloseDialog} color="primary">
-                Close
-              </Button>
-            </DialogActions>
-          </Dialog>
-
-          {/* Search bar */}
+        {/* Search Bar */}
+        <Box sx={{ mb: 3 }}>
           <TextField
             variant="outlined"
             fullWidth
             placeholder="Search your entries..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            sx={{ mb: 3 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon color="action" />
+                  <SearchIcon color="action" aria-label="Search icon" />
                 </InputAdornment>
               ),
             }}
+            inputProps={{
+              'aria-label': 'Search your journal entries',
+            }}
+            label="Search Entries"
           />
+        </Box>
 
-          {/* Stats or counts */}
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            You have written <strong>{Array.isArray(displayedEntries) ? displayedEntries.length : 0}</strong>{' '}
+        {/* Statistics */}
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            You have written{' '}
+            <strong>{Array.isArray(displayedEntries) ? displayedEntries.length : 0}</strong>{' '}
             {Array.isArray(displayedEntries) && displayedEntries.length === 1 ? 'entry' : 'entries'} so far. Keep going!
           </Typography>
+        </Box>
 
-          {/* Display entries */}
-          {(!Array.isArray(displayedEntries) || displayedEntries.length === 0) ? (
-            <Typography variant="body1" color="text.secondary">
-              No entries found. Try adding a new one above or adjusting your search.
+        {/* Entries List */}
+        {(!Array.isArray(displayedEntries) || displayedEntries.length === 0) ? (
+          <Box sx={{ textAlign: 'center', mt: 4 }}>
+            <Typography variant="h6" color="text.secondary">
+              No entries found.
             </Typography>
-          ) : (
-            <Box sx={{ mt: 2 }}>
-              {displayedEntries.map((entry) => (
-                <Card
-                  elevation={2}
-                  key={entry.id} // Ensure 'id' is unique
-                  sx={{
-                    mb: 2,
-                    backgroundColor: '#fff',
-                    borderRadius: 2,
-                    position: 'relative',
-                    transition: 'transform 0.1s',
-                    '&:hover': { transform: 'scale(1.01)' },
-                  }}
-                >
-                  <CardContent>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      <strong>Created At:</strong> {new Date(entry.created_at).toLocaleString()}
-                    </Typography>
-                    {entry.entry_text && (
-                      <>
-                        {entry.entry_text.split('\n').map((line, index) => {
-                          // Split each line by the colon to identify the field and its content
-                          const [field, ...content] = line.split(':');
-                          const displayField = field.trim();
-                          const displayContent = content.join(':').trim();
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Try adding a new one above or adjusting your search.
+            </Typography>
+          </Box>
+        ) : (
+          <Grid container spacing={2}>
+            {currentEntries.map((entry) => (
+              <Grid item xs={12} key={entry.id}>
+                <JournalCard
+                  entry={entry}
+                  onEdit={handleOpenEditDialog}
+                  onDelete={handleDeleteEntry}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        )}
 
-                          return (
-                            <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', mb: 1 }} key={index}>
-                              <strong>{displayField}:</strong> {displayContent}
-                            </Typography>
-                          );
-                        })}
-                      </>
-                    )}
-                  </CardContent>
-                  <CardActions sx={{ position: 'absolute', top: 8, right: 8 }}>
-                    <IconButton
-                      aria-label="delete"
-                      onClick={() => handleDeleteEntry(entry.id)}
-                      sx={{
-                        color: 'error.main',
-                        bgcolor: 'error.light',
-                        '&:hover': { bgcolor: 'error.main', color: '#fff' },
-                        transition: 'all 0.2s ease',
-                      }}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </CardActions>
-                </Card>
-              ))}
-            </Box>
-          )}
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+            <Pagination
+              count={totalPages}
+              page={currentPage}
+              onChange={handlePageChange}
+              color="primary"
+              showFirstButton
+              showLastButton
+              aria-label="Journal entries pagination"
+            />
+          </Box>
+        )}
 
-          {/* Pagination: Load More */}
-          {nextUrl && (
-            <Box sx={{ textAlign: 'center', mt: 3 }}>
-              <Button variant="outlined" color="primary" onClick={handleLoadMore}>
-                Load More
-              </Button>
-            </Box>
-          )}
+        {/* New Entry Form */}
+        <Paper elevation={3} sx={{ p: { xs: 3, sm: 4 }, borderRadius: 2, mt: 6, backgroundColor: '#fafafa' }}>
+          <Stack alignItems="center" spacing={2} sx={{ mb: 2 }}>
+            <Avatar sx={{ bgcolor: 'secondary.main', width: 64, height: 64 }}>
+              <BookIcon fontSize="large" />
+            </Avatar>
+            <Typography variant="h6" align="center" sx={{ color: 'text.primary' }}>
+              Start Journaling
+            </Typography>
+            <Typography variant="body2" color="text.secondary" align="center">
+              Use this space to jot down your thoughts, feelings, and experiences. No structure needed—just let your thoughts flow.
+            </Typography>
+          </Stack>
+
+          {/* Success and Error Messages */}
+          <Box sx={{ mb: 2 }}>
+            {success && (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                {success}
+              </Alert>
+            )}
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+          </Box>
+
+          {/* New Entry Form */}
+          <Box component="form" onSubmit={handleCreateEntry}>
+            <TextField
+              multiline
+              rows={6}
+              fullWidth
+              variant="outlined"
+              label="Your Thoughts"
+              placeholder="Write your thoughts here..."
+              value={newEntry.entry_text}
+              onChange={(e) => setNewEntry({ ...newEntry, entry_text: e.target.value })}
+              sx={{ mb: 3 }}
+              inputProps={{
+                'aria-label': 'Your journal entry text',
+              }}
+            />
+            <Button
+              variant="contained"
+              color="primary"
+              type="submit"
+              disabled={newEntry.entry_text.trim() === ''}
+              fullWidth
+              aria-label="Submit journal entry"
+            >
+              Submit Entry
+            </Button>
+          </Box>
         </Paper>
+
+        {/* Edit Entry Dialog */}
+        <Dialog open={editDialogOpen} onClose={handleCloseEditDialog} fullWidth maxWidth="sm" aria-labelledby="edit-journal-entry-dialog-title">
+          <DialogTitle id="edit-journal-entry-dialog-title">Edit Journal Entry</DialogTitle>
+          <DialogContent>
+            <TextField
+              multiline
+              rows={6}
+              fullWidth
+              variant="outlined"
+              label="Your Thoughts"
+              placeholder="Modify your thoughts here..."
+              value={updatedEntryText}
+              onChange={(e) => setUpdatedEntryText(e.target.value)}
+              sx={{ mt: 2 }}
+              inputProps={{
+                'aria-label': 'Edit journal entry text',
+              }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseEditDialog} color="secondary" aria-label="Cancel editing journal entry">
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateEntry} color="primary" variant="contained" aria-label="Save changes to journal entry">
+              Save Changes
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Confirmation Dialog */}
+        <Dialog open={openDialog} onClose={handleCloseDialog} aria-labelledby="entry-added-dialog-title">
+          <DialogTitle id="entry-added-dialog-title">Entry Added!</DialogTitle>
+          <DialogContent>
+            <Typography variant="body1">
+              Your journal entry has been successfully added. Keep up the great work!
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDialog} color="primary" aria-label="Close confirmation dialog">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Container>
     </Box>
   );

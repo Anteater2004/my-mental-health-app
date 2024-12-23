@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from decouple import config
 from datetime import timedelta
-
+from celery.schedules import crontab
 
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -35,7 +35,24 @@ INSTALLED_APPS = [
     'journaling',
     'goals',
     'gratitude',
+    'django_celery_beat',
+    'moodtracker',
 ]
+
+CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Using Redis as the broker
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+# Celery Beat Schedule
+CELERY_BEAT_SCHEDULE = {
+    'send-daily-swipe-reminders': {
+        'task': 'moodtracker.tasks.send_swipe_reminders',
+        'schedule': crontab(hour=8, minute=0),  # Every day at 8 AM
+    },
+}
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # For handling CORS

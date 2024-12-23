@@ -1,4 +1,5 @@
 // src/components/Meditations.js
+
 import React, { useState, useEffect } from 'react';
 import axios from '../axiosConfig'; // Ensure this path matches your Axios config file
 import { useNavigate } from 'react-router-dom';
@@ -26,20 +27,29 @@ import {
   DialogActions,
   Tooltip,
   LinearProgress,
+  FormControl,
+  FormLabel,
+  FormGroup,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
 import SpaIcon from '@mui/icons-material/Spa';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import PauseIcon from '@mui/icons-material/Pause';
+import EditIcon from '@mui/icons-material/Edit'; // Import for EditIcon
 
 function Meditations() {
+  // **State Management**
   const [sessions, setSessions] = useState([]);
   const [displayedSessions, setDisplayedSessions] = useState([]);
   const [newSession, setNewSession] = useState({
     title: '',
     description: '',
     duration: '',
-    audio_url: '',
+    audio_url: '', // Renamed from selected_audio to audio_url
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -49,15 +59,55 @@ function Meditations() {
   const navigate = useNavigate();
   const [activeStep, setActiveStep] = useState(0);
   const [openDialog, setOpenDialog] = useState(false);
+  const [audioPlayingId, setAudioPlayingId] = useState(null); // To track which audio is playing
 
+  // **Edit Dialog State**
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [currentEditSession, setCurrentEditSession] = useState(null);
+  const [updatedSessionData, setUpdatedSessionData] = useState({
+    title: '',
+    description: '',
+    duration: '',
+    audio_url: '',
+  });
+
+  // **Form Steps**
   const steps = [
     'Enter Title',
     'Enter Description',
     'Set Duration',
-    'Optional: Audio URL',
+    'Select Audio',
   ];
 
-  // Fetch meditation sessions
+  // **Predefined Meditation Audios**
+  const predefinedAudios = [
+    {
+      id: 1,
+      title: 'Calm Ocean Waves',
+      description: 'Gentle ocean waves crashing onto the shore.',
+      audio_url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+    },
+    {
+      id: 2,
+      title: 'Forest Ambience',
+      description: 'Serene sounds of a forest with birds chirping.',
+      audio_url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+    },
+    {
+      id: 3,
+      title: 'Rain and Thunder',
+      description: 'Relaxing rain with occasional thunderclaps.',
+      audio_url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+    },
+    {
+      id: 4,
+      title: 'Mountain Stream',
+      description: 'Clear water flowing over rocks in a mountain stream.',
+      audio_url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3',
+    },
+  ];
+
+  // **Fetch Meditation Sessions**
   const fetchSessions = async (url) => {
     setLoading(true);
     setError('');
@@ -102,7 +152,7 @@ function Meditations() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array ensures it's called only once
 
-  // Helper function to ensure unique sessions
+  // **Helper Function to Ensure Unique Sessions**
   const getUniqueSessions = (sessionsArray) => {
     const unique = [];
     const ids = new Set();
@@ -115,12 +165,13 @@ function Meditations() {
     return unique;
   };
 
-  // Filter sessions based on search query
+  // **Filter Sessions Based on Search Query**
   useEffect(() => {
     if (searchQuery.trim()) {
-      const filtered = sessions.filter((session) =>
-        session.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        session.description.toLowerCase().includes(searchQuery.toLowerCase())
+      const filtered = sessions.filter(
+        (session) =>
+          session.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          session.description.toLowerCase().includes(searchQuery.toLowerCase())
       );
       setDisplayedSessions(getUniqueSessions(filtered));
     } else {
@@ -128,7 +179,7 @@ function Meditations() {
     }
   }, [sessions, searchQuery]);
 
-  // Handle creation of a new meditation session
+  // **Handle Creation of a New Meditation Session**
   const handleCreateSession = async (e) => {
     e.preventDefault();
     setError('');
@@ -141,9 +192,10 @@ function Meditations() {
     if (
       newSession.title.trim() === '' ||
       newSession.description.trim() === '' ||
-      newSession.duration.trim() === ''
+      newSession.duration.trim() === '' ||
+      newSession.audio_url === ''
     ) {
-      setError('Title, Description, and Duration are required.');
+      setError('All fields are required.');
       return;
     }
 
@@ -159,12 +211,8 @@ function Meditations() {
       title: newSession.title,
       description: newSession.description,
       duration: durationInt,
+      audio_url: newSession.audio_url,
     };
-
-    // Include audio_url if provided
-    if (newSession.audio_url.trim() !== '') {
-      postData.audio_url = newSession.audio_url.trim();
-    }
 
     try {
       const response = await axios.post('journaling/meditations/', postData, {
@@ -201,7 +249,7 @@ function Meditations() {
     }
   };
 
-  // Handle deleting a meditation session
+  // **Handle Deleting a Meditation Session**
   const handleDeleteSession = async (id) => {
     setError('');
     setSuccess('');
@@ -212,7 +260,7 @@ function Meditations() {
           Authorization: undefined, // Remove Authorization header for public endpoints
         },
       });
-      setSessions(sessions.filter(session => session.id !== id));
+      setSessions(sessions.filter((session) => session.id !== id));
       setSuccess('Meditation session deleted successfully!');
     } catch (err) {
       console.error('Failed to delete meditation session:', err);
@@ -220,6 +268,97 @@ function Meditations() {
     }
   };
 
+  // **Functions to Handle Editing**
+  const handleOpenEditDialog = (session) => {
+    setCurrentEditSession(session);
+    setUpdatedSessionData({
+      title: session.title,
+      description: session.description,
+      duration: session.duration,
+      audio_url: session.audio_url,
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleCloseEditDialog = () => {
+    setEditDialogOpen(false);
+    setCurrentEditSession(null);
+    setUpdatedSessionData({
+      title: '',
+      description: '',
+      duration: '',
+      audio_url: '',
+    });
+  };
+
+  const handleUpdateSession = async () => {
+    setError('');
+    setSuccess('');
+
+    // Validate all required fields
+    if (
+      updatedSessionData.title.trim() === '' ||
+      updatedSessionData.description.trim() === '' ||
+      updatedSessionData.duration === '' ||
+      updatedSessionData.audio_url === ''
+    ) {
+      setError('All fields are required.');
+      return;
+    }
+
+    // Validate duration
+    const durationInt = parseInt(updatedSessionData.duration, 10);
+    if (isNaN(durationInt) || durationInt <= 0) {
+      setError('Duration must be a positive number.');
+      return;
+    }
+
+    // Prepare data for PUT request
+    const putData = {
+      title: updatedSessionData.title,
+      description: updatedSessionData.description,
+      duration: durationInt,
+      audio_url: updatedSessionData.audio_url,
+    };
+
+    try {
+      const response = await axios.put(
+        `journaling/meditations/${currentEditSession.id}/`,
+        putData,
+        {
+          headers: {
+            Authorization: undefined, // Remove Authorization header for public endpoints
+          },
+        }
+      );
+      console.log('Update Session Response:', response.data);
+
+      if (response.data && response.data.id) {
+        // Update the session in the local state
+        setSessions((prevSessions) =>
+          prevSessions.map((session) =>
+            session.id === response.data.id ? response.data : session
+          )
+        );
+        setSuccess('Meditation session updated successfully!');
+        handleCloseEditDialog();
+      } else {
+        console.error('Unexpected response after updating session:', response.data);
+        setError('Unexpected response after updating session.');
+      }
+    } catch (err) {
+      console.error('Failed to update meditation session:', err);
+      if (err.response && err.response.data) {
+        // Aggregate error messages
+        const messages = Object.values(err.response.data).flat().join(' ');
+        setError(messages || 'Failed to update meditation session. Please try again.');
+      } else {
+        setError('Failed to update meditation session. Please try again.');
+      }
+    }
+  };
+
+  // **Navigation Functions**
   const handleBack = () => {
     navigate('/');
   };
@@ -233,6 +372,10 @@ function Meditations() {
     setActiveStep((prev) => Math.min(prev + 1, steps.length - 1)); // Prevent exceeding max step
   };
 
+  const handlePrevStep = () => {
+    setActiveStep((prev) => Math.max(prev - 1, 0)); // Prevent going below step 0
+  };
+
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setActiveStep(0);
@@ -242,14 +385,46 @@ function Meditations() {
     setOpenDialog(true);
   };
 
-  // Calculate progress percentage based on activeStep
+  // **Calculate Progress Percentage Based on activeStep**
   const progressPercentage = Math.min(((activeStep + 1) / steps.length) * 100, 100);
 
-  // Add a console log to monitor activeStep
+  // **Audio Playback Controls**
+  const handlePlayAudio = (sessionId, duration) => {
+    if (audioPlayingId === sessionId) {
+      // If the clicked audio is already playing, pause it
+      const audioElement = document.getElementById(`audio-${sessionId}`);
+      if (audioElement) {
+        audioElement.pause();
+      }
+      setAudioPlayingId(null);
+    } else {
+      // Pause any currently playing audio
+      if (audioPlayingId) {
+        const currentAudio = document.getElementById(`audio-${audioPlayingId}`);
+        if (currentAudio) {
+          currentAudio.pause();
+        }
+      }
+      // Play the selected audio
+      const audioElement = document.getElementById(`audio-${sessionId}`);
+      if (audioElement) {
+        audioElement.play();
+        setAudioPlayingId(sessionId);
+        // Automatically pause after the specified duration
+        setTimeout(() => {
+          audioElement.pause();
+          setAudioPlayingId(null);
+        }, duration * 60 * 1000); // Convert minutes to milliseconds
+      }
+    }
+  };
+
+  // **Monitor activeStep Changes**
   useEffect(() => {
     console.log('Current activeStep:', activeStep);
   }, [activeStep]);
 
+  // **Render Loading State**
   if (loading && sessions.length === 0) {
     return (
       <Box
@@ -260,7 +435,7 @@ function Meditations() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          p: 2
+          p: 2,
         }}
       >
         <CircularProgress />
@@ -390,42 +565,52 @@ function Meditations() {
                 />
               )}
               {activeStep === 3 && (
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  label="Audio URL (Optional)"
-                  placeholder="Enter audio URL if available"
-                  value={newSession.audio_url}
-                  onChange={(e) => setNewSession({ ...newSession, audio_url: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
+                <FormControl component="fieldset" variant="standard" sx={{ mb: 2 }}>
+                  <FormLabel component="legend">Select a Meditation Audio</FormLabel>
+                  <FormGroup>
+                    {predefinedAudios.map((audio) => (
+                      <FormControlLabel
+                        key={audio.id}
+                        control={
+                          <Checkbox
+                            checked={newSession.audio_url === audio.audio_url}
+                            onChange={() =>
+                              setNewSession({ ...newSession, audio_url: audio.audio_url })
+                            }
+                            name={audio.title}
+                          />
+                        }
+                        label={
+                          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                            <Typography variant="body1" sx={{ mr: 1 }}>
+                              {audio.title}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {audio.description}
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                    ))}
+                  </FormGroup>
+                </FormControl>
               )}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
                 <Button
                   disabled={activeStep === 0}
-                  onClick={() => setActiveStep((prev) => prev - 1)}
+                  onClick={handlePrevStep}
                   variant="outlined"
                   color="primary"
-                  type="button" // Prevents form submission
                 >
                   Back
                 </Button>
-                
+
                 {activeStep === steps.length - 1 ? (
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    type="submit" // Triggers form submission
-                  >
+                  <Button variant="contained" color="primary" type="submit">
                     Submit Session
                   </Button>
                 ) : (
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    type="button" // Prevents form submission
-                    onClick={handleNextStep}
-                  >
+                  <Button variant="contained" color="primary" type="button" onClick={handleNextStep}>
                     Next
                   </Button>
                 )}
@@ -438,7 +623,7 @@ function Meditations() {
             <DialogTitle>Well Done!</DialogTitle>
             <DialogContent>
               <Typography variant="body1">
-                You've completed all the steps for your meditation session. Keep up the great work in cultivating mindfulness and reducing rumination!
+                You've successfully added a new meditation session. Enjoy your practice!
               </Typography>
             </DialogContent>
             <DialogActions>
@@ -448,11 +633,93 @@ function Meditations() {
             </DialogActions>
           </Dialog>
 
+          {/* **Edit Meditation Session Dialog** */}
+          <Dialog open={editDialogOpen} onClose={handleCloseEditDialog} fullWidth maxWidth="sm">
+            <DialogTitle>Edit Meditation Session</DialogTitle>
+            <DialogContent>
+              <Box component="form" sx={{ mt: 2 }}>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  label="Title"
+                  value={updatedSessionData.title}
+                  onChange={(e) =>
+                    setUpdatedSessionData({ ...updatedSessionData, title: e.target.value })
+                  }
+                  sx={{ mb: 2 }}
+                />
+                <TextField
+                  multiline
+                  rows={4}
+                  fullWidth
+                  variant="outlined"
+                  label="Description"
+                  value={updatedSessionData.description}
+                  onChange={(e) =>
+                    setUpdatedSessionData({ ...updatedSessionData, description: e.target.value })
+                  }
+                  sx={{ mb: 2 }}
+                />
+                <TextField
+                  type="number"
+                  fullWidth
+                  variant="outlined"
+                  label="Duration (minutes)"
+                  value={updatedSessionData.duration}
+                  onChange={(e) =>
+                    setUpdatedSessionData({ ...updatedSessionData, duration: e.target.value })
+                  }
+                  sx={{ mb: 2 }}
+                />
+                <FormControl component="fieldset" variant="standard" sx={{ mb: 2 }}>
+                  <FormLabel component="legend">Select a Meditation Audio</FormLabel>
+                  <FormGroup>
+                    {predefinedAudios.map((audio) => (
+                      <FormControlLabel
+                        key={audio.id}
+                        control={
+                          <Checkbox
+                            checked={updatedSessionData.audio_url === audio.audio_url}
+                            onChange={() =>
+                              setUpdatedSessionData({
+                                ...updatedSessionData,
+                                audio_url: audio.audio_url,
+                              })
+                            }
+                            name={audio.title}
+                          />
+                        }
+                        label={
+                          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                            <Typography variant="body1" sx={{ mr: 1 }}>
+                              {audio.title}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {audio.description}
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                    ))}
+                  </FormGroup>
+                </FormControl>
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleCloseEditDialog} color="secondary">
+                Cancel
+              </Button>
+              <Button onClick={handleUpdateSession} color="primary" variant="contained">
+                Save Changes
+              </Button>
+            </DialogActions>
+          </Dialog>
+
           {/* Search bar */}
           <TextField
             variant="outlined"
             fullWidth
-            placeholder="Search your sessions..."
+            placeholder="Search your sessions by title or description..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             sx={{ mb: 3 }}
@@ -511,12 +778,37 @@ function Meditations() {
                       </Typography>
                     )}
                     {session.audio_url && (
-                      <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>
-                        <strong>Audio URL:</strong> <a href={session.audio_url} target="_blank" rel="noopener noreferrer">Listen Here</a>
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <Button
+                          variant="contained"
+                          color="secondary"
+                          startIcon={audioPlayingId === session.id ? <PauseIcon /> : <PlayArrowIcon />}
+                          onClick={() => handlePlayAudio(session.id, session.duration)}
+                          sx={{ mr: 2 }}
+                        >
+                          {audioPlayingId === session.id ? 'Pause' : 'Play'}
+                        </Button>
+                        <audio id={`audio-${session.id}`} src={session.audio_url} onEnded={() => setAudioPlayingId(null)} />
+                        <Typography variant="body2" color="text.secondary">
+                          {predefinedAudios.find((audio) => audio.audio_url === session.audio_url)?.title}
+                        </Typography>
+                      </Box>
                     )}
                   </CardContent>
                   <CardActions sx={{ position: 'absolute', top: 8, right: 8 }}>
+                    <IconButton
+                      aria-label="edit"
+                      onClick={() => handleOpenEditDialog(session)}
+                      sx={{
+                        color: 'primary.main',
+                        bgcolor: 'primary.light',
+                        '&:hover': { bgcolor: 'primary.dark', color: '#fff' },
+                        mr: 1,
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <EditIcon /> {/* Using EditIcon */}
+                    </IconButton>
                     <IconButton
                       aria-label="delete"
                       onClick={() => handleDeleteSession(session.id)}
